@@ -1,0 +1,168 @@
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Svensexa 2026 - Livescore</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, sans-serif; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-5xl mx-auto">
+        
+        <!-- Header -->
+        <header class="text-center mb-8 border-b border-slate-700 pb-6">
+            <h1 class="text-3xl font-black text-amber-400 tracking-tight md:text-5xl uppercase tracking-wider">Mästarnötet</h1>
+            <p class="text-slate-400 mt-2 text-sm md:text-base">Individuell poängställning • Uppdateras live under dagen</p>
+        </header>
+
+        <!-- Diagram -->
+        <div class="bg-slate-800 p-4 rounded-xl shadow-2xl mb-8 border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 text-slate-200 flex items-center gap-2">📊 Poängfördelning</h2>
+            <div class="relative h-96 w-full">
+                <canvas id="scoreChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700">
+            <div class="p-4 bg-slate-900/50 border-b border-slate-700">
+                <h2 class="text-xl font-bold text-slate-200">🏆 Aktuell Leaderboard (Top 3 vinner)</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead id="table-head">
+                        <!-- Genereras live -->
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-700 text-sm md:text-base">
+                        <!-- Genereras live -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 🔗 Klistra in din publicerade CSV-länk från Google Sheets här:
+        const csvUrl = 'DIN_PUBLICERADE_GOOGLE_SHEET_CSV_URL_HÄR'; 
+
+        let chartInstance = null;
+
+        async function fetchAndRender() {
+            try {
+                const response = await fetch(csvUrl);
+                const csvText = await response.text();
+                const lines = csvText.split(/\r?\n/).map(line => line.split(','));
+                if (lines.length < 3) return;
+
+                const headers = lines[0];
+                const visibility = lines[1];
+
+                // 1. Identifiera synliga tävlingar (markerade med JA)
+                const activeCols = [];
+                for (let i = 1; i < headers.length; i++) {
+                    if (visibility[i] && visibility[i].trim().toUpperCase() === 'JA') {
+                        activeCols.push({ index: i, name: headers[i].trim() });
+                    }
+                }
+
+                // 2. Bearbeta individuella poäng för alla 20 deltagare
+                const participants = [];
+                for (let j = 2; j < lines.length; j++) {
+                    const row = lines[j];
+                    if (!row || !row[0] || row[0].trim() === '') continue;
+
+                    const p = { name: row[0].trim(), scores: {}, total: 0 };
+                    activeCols.forEach(col => {
+                        const val = parseFloat(row[col.index]) || 0;
+                        p.scores[col.name] = val;
+                        p.total += val;
+                    });
+                    participants.push(p);
+                }
+
+                // 3. Sortera individuellt (Högst totalpoäng överst)
+                participants.sort((a, b) => b.total - a.total);
+
+                // 4. Rendera dynamiskt tabellhuvud
+                const thead = document.getElementById('table-head');
+                let headHtml = `<tr class="bg-slate-900 text-slate-400 uppercase text-xs tracking-wider border-b border-slate-700">
+                    <th class="p-4 text-center w-16">Plac.</th>
+                    <th class="p-4">Namn</th>`;
+                activeCols.forEach(col => {
+                    headHtml += `<th class="p-4 text-center">${col.name}</th>`;
+                });
+                headHtml += `<th class="p-4 text-right font-bold text-amber-400">Totalt</th></tr>`;
+                thead.innerHTML = headHtml;
+
+                // 5. Rendera deltagarrader (med pallplats-piff för Top 3)
+                const tbody = document.getElementById('table-body');
+                tbody.innerHTML = '';
+                participants.forEach((p, index) => {
+                    const row = document.createElement('tr');
+                    
+                    // Snygg färgmarkering för de tre som ligger på vinstplats just nu
+                    let rowClass = "hover:bg-slate-700/40";
+                    let medal = "";
+                    if (index === 0) { rowClass = "bg-amber-500/10 font-bold border-l-4 border-amber-400"; medal = "🥇 "; }
+                    else if (index === 1) { rowClass = "bg-slate-500/10 font-bold border-l-4 border-slate-400"; medal = "🥈 "; }
+                    else if (index === 2) { rowClass = "bg-amber-700/10 font-bold border-l-4 border-amber-700"; medal = "🥉 "; }
+                    
+                    row.className = rowClass;
+                    
+                    let rowHtml = `
+                        <td class="p-4 text-center font-black ${index < 3 ? 'text-amber-400 text-lg' : 'text-slate-400'}">${index + 1}</td>
+                        <td class="p-4 font-medium text-white">${medal}${p.name}</td>`;
+                    
+                    activeCols.forEach(col => {
+                        rowHtml += `<td class="p-4 text-center text-slate-300">${p.scores[col.name]} p</td>`;
+                    });
+                    
+                    rowHtml += `<td class="p-4 text-right font-black text-amber-400">${p.total} p</td>`;
+                    row.innerHTML = rowHtml;
+                    tbody.appendChild(row);
+                });
+
+                // 6. Rita/Uppdatera ackumulerat diagram
+                const ctx = document.getElementById('scoreChart').getContext('2d');
+                if (chartInstance) chartInstance.destroy();
+
+                const colors = ['#38bdf8', '#f43f5e', '#eab308', '#10b981', '#a855f7'];
+                const datasets = activeCols.map((col, idx) => ({
+                    label: col.name,
+                    data: participants.map(p => p.scores[col.name]),
+                    backgroundColor: colors[idx % colors.length]
+                }));
+
+                chartInstance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: participants.map(p => p.name),
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8', font: { weight: 'bold' } } },
+                            y: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+                        },
+                        plugins: {
+                            legend: { position: 'bottom', labels: { color: '#f8fafc', padding: 15 } }
+                        }
+                    }
+                });
+
+            } catch (error) {
+                console.error("Fel vid uppdatering av leaderboard:", error);
+            }
+        }
+
+        // Kör direkt vid start och hämta ny data var 30:e sekund
+        fetchAndRender();
+        setInterval(fetchAndRender, 30000);
+    </script>
+</body>
+</html>

@@ -46,7 +46,7 @@
 
     <script>
         // 🔗 Klistra in din publicerade CSV-länk från Google Sheets här:
-        const csvUrl = 'DIN_PUBLICERADE_GOOGLE_SHEET_CSV_URL_HÄR'; 
+        const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQe4e7mxI6e0vR9JSO7bS2OqgiFoKwZaApO_N7RKu_XJQTI5h6UTl0043vhsKZAi1oA74iIFH9N54mu/pub?gid=1365446999&single=true&output=csv'; 
 
         let chartInstance = null;
 
